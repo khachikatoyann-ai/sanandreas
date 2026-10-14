@@ -1,16 +1,18 @@
-name: Build iOS IPA
+name: Build iOS IPA for Sideloadly
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
-  build-ios:
-    runs-on: macos-latest
+  build-ios-ipa:
+    runs-on: macos-14
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Godot Engine
+      - name: Setup Godot 4.3 Engine & Templates
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.3.0
@@ -19,22 +21,42 @@ jobs:
       - name: Export iOS Xcode Project
         run: |
           mkdir -p build/ios
-          godot --headless --export-release "iOS" build/ios/LosSantosAdvanced.xcodeproj
+          godot --headless --export-debug "iOS" build/ios/export.zip
+          cd build/ios
+          unzip -o export.zip || true
 
-      - name: Build Archive via Xcode
+      - name: Compile and Archive with Xcode
         run: |
           cd build/ios
-          xcodebuild -project LosSantosAdvanced.xcodeproj -scheme LosSantosAdvanced -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE="" archive -archivePath LosSantosAdvanced.xcarchive
+          PROJECT_FILE=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
+          echo "Discovered Xcode Project: $PROJECT_FILE"
+          
+          # Detect Scheme
+          SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes:/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
+          echo "Targeting Scheme: $SCHEME_NAME"
+          
+          xcodebuild -project "$PROJECT_FILE" \
+            -scheme "$SCHEME_NAME" \
+            -sdk iphoneos \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE="" \
+            archive -archivePath archive.xcarchive
 
-      - name: Package Unsigned IPA
+      - name: Package IPA for Sideloadly
         run: |
           mkdir -p build/Payload
-          cp -r build/ios/LosSantosAdvanced.xcarchive/Products/Applications/LosSantosAdvanced.app build/Payload/
+          APP_PATH=$(find build/ios/archive.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n 1)
+          echo "Found compiled app at: $APP_PATH"
+          cp -r "$APP_PATH" build/Payload/
           cd build
-          zip -r LosSantosAdvanced_unsigned.ipa Payload/
+          zip -qr LosSantosAdvanced_Sideloadly.ipa Payload/
+          echo "IPA packaging complete: build/LosSantosAdvanced_Sideloadly.ipa"
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: LosSantosAdvanced-iOS-IPA
-          path: build/LosSantosAdvanced_unsigned.ipa
+          name: LosSantosAdvanced-iOS-Sideloadly
+          path: build/LosSantosAdvanced_Sideloadly.ipa
+          retention-days: 7
