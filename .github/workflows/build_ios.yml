@@ -34,18 +34,19 @@ jobs:
       - name: Compile Native Mach-O Executable via Xcode
         run: |
           cd build/ios
-          xcodebuild archive \
+          xcodebuild build \
             -project LosSantosAdvanced.xcodeproj \
             -scheme LosSantosAdvanced \
             -configuration Release \
+            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath LosSantosAdvanced.xcarchive \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            CONFIGURATION_BUILD_DIR="$PWD/output"
             
           mkdir -p Payload
-          cp -r LosSantosAdvanced.xcarchive/Products/Applications/LosSantosAdvanced.app Payload/
+          cp -r output/LosSantosAdvanced.app Payload/
           zip -qr LosSantosAdvanced.ipa Payload/
 
       - name: Upload Ready-to-Sideload IPA
