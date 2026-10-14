@@ -1,3 +1,9 @@
-# Godot 4+ specific ignores
+# Godot imported assets and caches
 .godot/
-/android/
+
+# Local build artifacts (avoid GitHub 100MB file limit)
+build/
+
+# Scratch files and temporary test scripts
+scratch/
+*.log

@@ -1,62 +1,55 @@
 name: Build iOS IPA for Sideloadly
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  build-ios-ipa:
-    runs-on: macos-14
+  build:
+    name: Build iOS IPA with Xcode
+    runs-on: macos-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Godot 4.3 Engine & Templates
-        uses: chickensoft-games/setup-godot@v2
-        with:
-          version: 4.3.0
-          use-dotnet: false
+      - name: Download & Install Godot 4.7.2 macOS
+        run: |
+          curl -L -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_macos.universal.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot_bin
+          mv /tmp/godot_bin/Godot.app /Applications/
 
-      - name: Export iOS Xcode Project
+      - name: Download & Install Godot 4.7.2 Export Templates
+        run: |
+          mkdir -p "$HOME/Library/Application Support/Godot/export_templates/4.7.2.stable"
+          curl -L -o /tmp/templates.tpz https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz
+          unzip -q /tmp/templates.tpz -d /tmp/godot_templates
+          mv /tmp/godot_templates/templates/* "$HOME/Library/Application Support/Godot/export_templates/4.7.2.stable/"
+
+      - name: Export Xcode Project from Godot
         run: |
           mkdir -p build/ios
-          godot --headless --export-debug "iOS" build/ios/export.zip
-          cd build/ios
-          unzip -o export.zip || true
+          /Applications/Godot.app/Contents/MacOS/Godot --path . --headless --export-debug "iOS" "build/ios/LosSantosAdvanced.zip"
 
-      - name: Compile and Archive with Xcode
+      - name: Compile Native Mach-O Executable via Xcode
         run: |
           cd build/ios
-          PROJECT_FILE=$(find . -maxdepth 2 -name "*.xcodeproj" | head -n 1)
-          echo "Discovered Xcode Project: $PROJECT_FILE"
-          
-          # Detect Scheme
-          SCHEME_NAME=$(xcodebuild -project "$PROJECT_FILE" -list | awk '/Schemes:/{flag=1;next}/^$/{flag=0}flag' | head -n 1 | xargs)
-          echo "Targeting Scheme: $SCHEME_NAME"
-          
-          xcodebuild -project "$PROJECT_FILE" \
-            -scheme "$SCHEME_NAME" \
-            -sdk iphoneos \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
+          xcodebuild archive \
+            -project LosSantosAdvanced.xcodeproj \
+            -scheme LosSantosAdvanced \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath LosSantosAdvanced.xcarchive \
             CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE="" \
-            archive -archivePath archive.xcarchive
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+            
+          mkdir -p Payload
+          cp -r LosSantosAdvanced.xcarchive/Products/Applications/LosSantosAdvanced.app Payload/
+          zip -qr LosSantosAdvanced.ipa Payload/
 
-      - name: Package IPA for Sideloadly
-        run: |
-          mkdir -p build/Payload
-          APP_PATH=$(find build/ios/archive.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -n 1)
-          echo "Found compiled app at: $APP_PATH"
-          cp -r "$APP_PATH" build/Payload/
-          cd build
-          zip -qr LosSantosAdvanced_Sideloadly.ipa Payload/
-          echo "IPA packaging complete: build/LosSantosAdvanced_Sideloadly.ipa"
-
-      - name: Upload IPA Artifact
+      - name: Upload Ready-to-Sideload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: LosSantosAdvanced-iOS-Sideloadly
-          path: build/LosSantosAdvanced_Sideloadly.ipa
-          retention-days: 7
+          name: LosSantosAdvanced-iOS-IPA
+          path: build/ios/LosSantosAdvanced.ipa
