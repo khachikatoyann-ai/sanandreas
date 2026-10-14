@@ -1,0 +1,40 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Godot Engine
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+
+      - name: Export iOS Xcode Project
+        run: |
+          mkdir -p build/ios
+          godot --headless --export-release "iOS" build/ios/LosSantosAdvanced.xcodeproj
+
+      - name: Build Archive via Xcode
+        run: |
+          cd build/ios
+          xcodebuild -project LosSantosAdvanced.xcodeproj -scheme LosSantosAdvanced -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="" PROVISIONING_PROFILE="" archive -archivePath LosSantosAdvanced.xcarchive
+
+      - name: Package Unsigned IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build/ios/LosSantosAdvanced.xcarchive/Products/Applications/LosSantosAdvanced.app build/Payload/
+          cd build
+          zip -r LosSantosAdvanced_unsigned.ipa Payload/
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LosSantosAdvanced-iOS-IPA
+          path: build/LosSantosAdvanced_unsigned.ipa
